@@ -1,15 +1,134 @@
-<!DOCTYPE html>
+<!doctype html>
 <html>
   <head>
-    <meta charset="utf-8">
     <link rel="stylesheet" type="text/css" href="https://cdn.mxpnl.com/libs/mixpanel-platform/css/reset.css">
     <link rel="stylesheet" type="text/css" href="https://cdn.mxpnl.com/libs/mixpanel-platform/build/mixpanel-platform.v0.latest.min.css">
     <script src="https://cdn.mxpnl.com/libs/mixpanel-platform/build/mixpanel-platform.v0.latest.min.js"></script>
+    <style>
+      #run {margin-top:5px;float:left;clear:both;padding: 6px 12px 12px;background-color: #61adf0;background-image: -webkit-linear-gradient(#6ab5f2,#53a0ee);background-image: linear-gradient(#6ab5f2,#53a0ee);box-shadow: inset 0 1px 1px #77bdf4,0 2px 2px -1px rgba(0,0,0,0.2);text-transform: uppercase;border: 1px solid #4d93d7;color: #fff;text-shadow: 0 -1px 0 rgba(0,0,0,0.2);border-radius: 3px;cursor: pointer;font-weight: bold;}
+    </style>
   </head>
   <body class="mixpanel-platform-body">
-    <h1>Hello, World!</h1>
+    <div class="mixpanel-platform-section">
+      <div class="titles">
+        <h1 style="font-size: 18px; color: rgb(95,105,131)">Daily Active Users Over Time Period</h1>
+        <p style="font-size: 14px; color: rgb(95,105,131)">Select Date Range</p>
+        <div style="clear: both;"></div>
+      </div>
+      <div class="selectors">
+        <div id="dateSelect" style="float: left;"></div>
+        <button id="run" value="Run">Run</button><br><br><br><br />
+        <div style="clear: both;"></div>
+      </div>
+    </div>
+    <div id="graph"></div>
     <script>
-      // Run queries and display results here
+      MP.api.ready(function() {
+        var eventGraph  = $('#graph').MPChart({chartType: 'line'});
+        var dateSelect  = $('#dateSelect').MPDatepicker();
+        
+        // Convenience method for grabbing that datepicker value
+        getDates = function() {
+          return dateSelect.MPDatepicker('value')
+        }
+
+        // Find interval for bar chart 'interval' param
+        getInterval = function(dates) {
+          intervalDays = Math.ceil((dates.to - dates.from) / (24 * 60 * 60 * 1000)) + 1
+          return intervalDays
+        }
+        
+        // Add 1 day to date of type string
+        addOneDay = function(date) {
+          transformDate = $.datepicker.parseDate('yy-mm-dd', date);
+          transformDate.setDate(transformDate.getDate() + 1)
+          finalDate = $.datepicker.formatDate('yy-mm-dd', transformDate);
+          return finalDate
+        }
+        
+        var runQuery = function() {
+          // Obtain parameters 
+          var eventName = '$app_open',
+              dates = getDates(),
+              dauOutput = {},
+              mauOutput = {},
+              promisesMAU = [];
+          
+          $('#graph').empty();
+          mauOutput[eventName] = {}
+          
+          // Query for DAU
+          var params = $.extend({}, dates, {
+              'type': 'unique',
+              'unit': 'day'
+          });
+          MP.api.segment(eventName, params).done(function(queryResults) {
+            dauOutput = queryResults.values();
+          });
+            
+          // Query for MAU
+          for (var d = dates.from; d <= dates.to; d.setDate(d.getDate() + 1)) {
+            var dauDate =  moment(d).format('YYYY-MM-DD')
+            var mauStartDate =  new Date(d);
+            mauStartDate.setDate(mauStartDate.getDate()-31);
+            var mauEndDate =  new Date(d);
+            mauEndDate.setDate(mauEndDate.getDate()-1);
+            
+            promisesMAU.push(MP.api.segment(eventName, {
+              'type': 'unique',
+              'to':  moment(mauEndDate).format('YYYY-MM-DD'),
+              'from': moment(mauStartDate).format('YYYY-MM-DD'),
+              'interval': 30
+            }));
+          };
+          
+          var $mau = Promise.all(promisesMAU).then(function(promiseMauArray){
+            _.each(promiseMauArray, function(data){
+              var mauQuery = data.values()[eventName];
+              var zeroDate = new Date(0);
+              var dauDate = moment(zeroDate).format('YYYY-MM-DD');
+              var sum = 0;
+              // Calculate MAU
+              _.each(_.keys(mauQuery), function(dates){
+                var values = mauQuery[dates];
+                sum = sum + values;
+                if (dates > dauDate) {
+                  dauDate = dates;
+                };
+              });
+              if (sum == 0) {sum = 1};
+              var finalDauDate = addOneDay(dauDate)
+              mauOutput[eventName][finalDauDate] = sum;
+            });
+          }).then(function(){
+            // Calculate DAU over MAU
+            var dauResults = dauOutput[eventName];
+            var mauResults = mauOutput[eventName];
+            var finalOutput = {};
+            finalOutput["Top 10"] = {};
+            
+            if (dauOutput) {
+              _.each(_.keys(dauResults), function(date){
+                var dauValue = dauResults[date];
+                var mauValue = mauResults[date];
+                finalOutput["Top 10"][date] = dauValue/mauValue;
+              });
+            } else {
+              _.each(_.keys(mauResults), function(date){
+                finalOutput["Top 10"][date] = 0;
+              });
+            };
+            // Log and graph results
+            eventGraph.MPChart('setData', finalOutput);    
+            console.log("Dau Data" + dauOutput);
+            console.log("MAU Data" + mauOutput);
+            console.log("Final Data" + finalOutput)
+          });
+        };
+        //actions when dropdowns change
+        $('#run').on('click', function(e){runQuery()});
+      });
     </script>
+    
   </body>
 </html>
