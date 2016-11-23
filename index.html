@@ -105,17 +105,17 @@
             var dauResults = dauOutput[eventName];
             var mauResults = mauOutput[eventName];
             var finalOutput = {};
-            finalOutput["Top 10"] = {};
+            finalOutput["DAU / MAU"] = {};
             
             if (dauOutput) {
               _.each(_.keys(dauResults), function(date){
                 var dauValue = dauResults[date];
                 var mauValue = mauResults[date];
-                finalOutput["Top 10"][date] = dauValue/mauValue;
+                finalOutput["DAU / MAU"][date] = dauValue/mauValue;
               });
             } else {
               _.each(_.keys(mauResults), function(date){
-                finalOutput["Top 10"][date] = 0;
+                finalOutput["DAU / Mau"][date] = 0;
               });
             };
             // Log and graph results
